@@ -8,15 +8,21 @@ ENV PYTHONUNBUFFERED=1
 # Create and set the working directory
 WORKDIR /app
 
+# Install system dependencies and ffmpeg
+RUN apt-get update && \
+    apt-get install -y \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy the requirements file into the container
 COPY requirements.txt /app/
 
-# Install dependencies
+# Install Python dependencies
 RUN pip install --upgrade pip && \
     pip install -r requirements.txt
 
 # Copy the rest of the application code into the container
-COPY . ./
+COPY . /app/
 
 # Expose the port FastAPI will run on
 EXPOSE 8000

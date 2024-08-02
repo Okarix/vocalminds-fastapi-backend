@@ -4,70 +4,60 @@ import numpy as np
 import matplotlib.pyplot as plt
 from io import BytesIO
 from pydub import AudioSegment
+import ffmpeg
+import soundfile as sf
 
-def convert_to_wav(file_content: BytesIO) -> BytesIO:
-    sound = AudioSegment.from_file(file_content)
-    wav_content = BytesIO()
-    sound.export(wav_content, format='wav')
-    wav_content.seek(0)
-    return wav_content
+def convert_to_wav(file_content: BytesIO, original_format: str) -> BytesIO:
+    output = BytesIO()
+    input_stream = ffmpeg.input('pipe:0', format=original_format)
+    output_stream = ffmpeg.output(input_stream, 'pipe:1', format='wav', acodec='pcm_s16le')
+    out, err = ffmpeg.run(output_stream, input=file_content.getvalue(), capture_stdout=True, capture_stderr=True)
+    output.write(out)
+    output.seek(0)
+    return output
 
 def load_audio(file_content: BytesIO):
-    y, sr = librosa.load(file_content, sr=None)
+    try:
+        # First, try to load the audio directly
+        y, sr = librosa.load(file_content, sr=None)
+    except Exception as e:
+        logger.warning(f"Could not load audio directly: {e}")
+        try:
+            # If direct loading fails, try to use soundfile to read the audio
+            file_content.seek(0)
+            data, samplerate = sf.read(file_content)
+            y = data.T if data.ndim > 1 else data
+            sr = samplerate
+        except Exception as e:
+            logger.error(f"Failed to load audio using soundfile: {e}")
+            raise ValueError("Could not load the audio file. The format may be unsupported.")
+    
     return y, sr
 
 def analyze_pitch_with_librosa(y, sr):
-    try:
-        pitches, _ = librosa.piptrack(y=y, sr=sr)
-        return np.mean(pitches, axis=0)
-    except Exception as e:
-        logger.error(f"Error in pitch analysis: {e}")
-        return []
+    pitches, _ = librosa.piptrack(y=y, sr=sr)
+    return np.mean(pitches, axis=0)
 
 def analyze_timbre(y, sr):
-    try:
-        return librosa.feature.spectral_centroid(y=y, sr=sr)[0]
-    except Exception as e:
-        logger.error(f"Error in timbre analysis: {e}")
-        return []
+    return librosa.feature.spectral_centroid(y=y, sr=sr)[0]
 
 def analyze_dynamics(y):
-    try:
-        return librosa.feature.rms(y=y)[0]
-    except Exception as e:
-        logger.error(f"Error in dynamics analysis: {e}")
-        return []
+    return librosa.feature.rms(y=y)[0]
 
 def analyze_articulation(y, sr):
-    try:
-        onset_env = librosa.onset.onset_strength(y=y, sr=sr)
-        return onset_env
-    except Exception as e:
-        logger.error(f"Error in articulation analysis: {e}")
-        return []
+    onset_env = librosa.onset.onset_strength(y=y, sr=sr)
+    return onset_env
 
 def analyze_rhythm(y, sr):
-    try:
-        tempo, beats = librosa.beat.beat_track(y=y, sr=sr)
-        return tempo, beats
-    except Exception as e:
-        logger.error(f"Error in rhythm analysis: {e}")
-        return 0, []
+    tempo, beats = librosa.beat.beat_track(y=y, sr=sr)
+    return tempo, beats
 
 def analyze_breath_control(y, sr):
-    try:
-        return librosa.feature.rms(y=y)[0]
-    except Exception as e:
-        logger.error(f"Error in breath control analysis: {e}")
-        return []
+    return librosa.feature.rms(y=y)[0]
 
 def analyze_vibrato(y, sr):
-    try:
-        f0, voiced_flag, voiced_probs = librosa.pyin(y, fmin=librosa.note_to_hz('C2'), fmax=librosa.note_to_hz('C7'))
-        return f0
-    except Exception as e:
-        logger.error(f"Error in vibrato analysis: {e}")
-        return []
+    f0, voiced_flag, voiced_probs = librosa.pyin(y, fmin=librosa.note_to_hz('C2'), fmax=librosa.note_to_hz('C7'))
+    return f0
 
 def plot_analysis_results(results):
     num_plots = len(results)
